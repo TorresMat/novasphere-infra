@@ -1,0 +1,31 @@
+# TODO : Ces fichiers contiennent des secrets (clés API, mots de passe) ou l'état local de l'infrastructure.
+# S'ils sont publiés sur GitHub, n'importe qui peut accéder à mon cloud ou corrompre mes ressources.
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+!example.tfvars
+crash.log
+
+# Ansible
+*.retry
+
+# Secrets et credentials
+.env
+*.pem
+*.key
+*_rsa
+*_rsa.pub
+
+# AWS
+.aws/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
