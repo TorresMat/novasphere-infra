@@ -12,3 +12,5 @@ _À compléter au fil des séances._
 ## Auteur
 - Nom : mat-terraform-ansible
 - Date de création : 25/02/2026
+## Structure du dépôt
+- `docs/` — Documentation d'architecture
