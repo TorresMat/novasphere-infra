@@ -1,6 +1,6 @@
 # Le tag v2.0.2 utilise une liste de SG sources, compatible avec les IDs connus seulement après création.
 module "sg_alb" {
-  source = "git::https://github.com/RaiZing955/terraform-aws-web-sg.git?ref=v2.0.2"
+  source = "git::https://github.com/RaiZing955/terraform-aws-web-sg.git?ref=v2.0.3"
 
   name          = "${local.name_prefix}-alb"
   vpc_id        = module.vpc.vpc_id
@@ -15,7 +15,7 @@ module "sg_alb" {
 }
 
 module "sg_web" {
-  source = "git::https://github.com/RaiZing955/terraform-aws-web-sg.git?ref=v2.0.2"
+  source = "git::https://github.com/RaiZing955/terraform-aws-web-sg.git?ref=v2.0.3"
 
   name                      = "${local.name_prefix}-web"
   vpc_id                    = module.vpc.vpc_id
