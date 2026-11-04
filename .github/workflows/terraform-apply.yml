@@ -1,0 +1,256 @@
+name: Terraform apply and drift
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1-5"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: novasphere-terraform-apply
+  cancel-in-progress: false
+
+jobs:
+  apply-dev:
+    name: Plan file then apply dev
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: development
+    env:
+      AWS_REGION: us-east-1
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_owner: ${{ vars.TEAM_OWNER }}
+      TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
+      TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with OIDC (personal account)
+        if: ${{ vars.AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Configure temporary AWS Academy credentials
+        if: ${{ vars.AWS_ROLE_ARN == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.0
+          terraform_wrapper: false
+
+      - name: Validate configuration
+        run: |
+          set -euo pipefail
+          test -n "$TF_VAR_owner"
+          test -n "$TF_VAR_app_secret"
+          terraform fmt -check -recursive
+          terraform -chdir=envs/dev init -input=false
+          terraform -chdir=envs/dev validate -no-color
+
+      - name: Create and review saved plan
+        run: |
+          terraform -chdir=envs/dev plan -input=false -no-color -lock-timeout=5m -out=tfplan
+          terraform -chdir=envs/dev show -no-color tfplan
+
+      - name: Apply exactly the saved plan
+        run: terraform -chdir=envs/dev apply -input=false -auto-approve tfplan
+
+      - name: Show dev URL
+        run: terraform -chdir=envs/dev output -raw alb_url
+
+  plan-prod:
+    name: Prepare production plan for approval
+    if: ${{ github.event_name == 'push' }}
+    needs: [apply-dev]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AWS_REGION: us-east-1
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_owner: ${{ vars.TEAM_OWNER }}
+      TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
+      TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with OIDC (personal account)
+        if: ${{ vars.AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Configure temporary AWS Academy credentials
+        if: ${{ vars.AWS_ROLE_ARN == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.0
+          terraform_wrapper: false
+
+      - name: Plan production after dev
+        run: |
+          set -euo pipefail
+          test -n "$TF_VAR_owner"
+          test -n "$TF_VAR_app_secret"
+          terraform -chdir=envs/prod init -input=false
+          terraform -chdir=envs/prod validate -no-color
+          terraform -chdir=envs/prod plan -input=false -no-color -lock-timeout=5m -out=tfplan
+          terraform -chdir=envs/prod show -no-color tfplan
+
+      - name: Transfer the exact production plan to the protected job
+        uses: actions/upload-artifact@v4
+        with:
+          name: novasphere-prod-plan-${{ github.sha }}
+          path: envs/prod/tfplan
+          if-no-files-found: error
+          retention-days: 1
+
+  apply-prod:
+    name: Apply the approved production plan
+    # Define ENABLE_PROD_APPLY=true only after configuring required reviewers
+    # on the GitHub environment named "production".
+    if: ${{ github.event_name == 'push' && vars.ENABLE_PROD_APPLY == 'true' }}
+    needs: [plan-prod]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      AWS_REGION: us-east-1
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_owner: ${{ vars.TEAM_OWNER }}
+      TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
+      TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the production plan reviewed in the previous job
+        uses: actions/download-artifact@v4
+        with:
+          name: novasphere-prod-plan-${{ github.sha }}
+          path: envs/prod
+
+      - name: Configure AWS credentials with OIDC (personal account)
+        if: ${{ vars.AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Configure temporary AWS Academy credentials
+        if: ${{ vars.AWS_ROLE_ARN == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.0
+          terraform_wrapper: false
+
+      - name: Initialize and apply exactly the approved plan
+        run: |
+          set -euo pipefail
+          test -n "$TF_VAR_owner"
+          test -n "$TF_VAR_app_secret"
+          test -s envs/prod/tfplan
+          terraform -chdir=envs/prod init -input=false
+          terraform -chdir=envs/prod apply -input=false -auto-approve tfplan
+          rm -f envs/prod/tfplan
+
+      - name: Show production URL
+        run: terraform -chdir=envs/prod output -raw alb_url
+
+  drift:
+    name: Scheduled / manual drift detection
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && vars.DRIFT_CHECK_ENABLED == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, prod]
+    env:
+      AWS_REGION: us-east-1
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_owner: ${{ vars.TEAM_OWNER }}
+      TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
+      TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with OIDC (personal account)
+        if: ${{ vars.AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Configure temporary AWS Academy credentials
+        if: ${{ vars.AWS_ROLE_ARN == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.0
+          terraform_wrapper: false
+
+      - name: Detect drift with detailed exit code
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TF_VAR_owner"
+          test -n "$TF_VAR_app_secret"
+          terraform -chdir="envs/${{ matrix.environment }}" init -input=false
+          terraform -chdir="envs/${{ matrix.environment }}" validate -no-color
+          set +e
+          terraform -chdir="envs/${{ matrix.environment }}" plan -input=false -no-color -detailed-exitcode -lock-timeout=5m
+          rc=$?
+          set -e
+          if [[ $rc -eq 2 ]]; then
+            echo "::error::Dérive détectée dans ${{ matrix.environment }}. Lire le plan ci-dessus."
+            exit 1
+          elif [[ $rc -ne 0 ]]; then
+            exit "$rc"
+          fi
+          echo "Aucune dérive détectée dans ${{ matrix.environment }}."

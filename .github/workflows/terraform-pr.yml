@@ -1,0 +1,157 @@
+name: Terraform PR checks
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+concurrency:
+  group: terraform-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  terraform-plan:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
+    name: Format, validate and plan dev/prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AWS_REGION: us-east-1
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_owner: ${{ vars.TEAM_OWNER }}
+      TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
+      TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials with OIDC (personal account)
+        if: ${{ vars.AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Configure temporary AWS Academy credentials
+        if: ${{ vars.AWS_ROLE_ARN == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+      - name: Verify identity and required variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TF_VAR_owner" || { echo "Définir la variable GitHub TEAM_OWNER."; exit 1; }
+          test -n "$TF_VAR_app_secret" || { echo "Définir le secret GitHub APP_SECRET."; exit 1; }
+          aws sts get-caller-identity
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.0
+          terraform_wrapper: false
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+      - name: Plan each environment and prepare PR comment
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > terraform-plan-comment.md
+          echo "<!-- novasphere-terraform-plan -->" >> terraform-plan-comment.md
+          echo "# NovaSphere — plans Terraform" >> terraform-plan-comment.md
+          for env in dev prod; do
+            echo "## Environnement: $env" >> terraform-plan-comment.md
+            terraform -chdir="envs/$env" init -input=false
+            terraform -chdir="envs/$env" validate -no-color
+            terraform -chdir="envs/$env" plan -input=false -no-color -lock-timeout=5m -out=tfplan
+            terraform -chdir="envs/$env" show -no-color tfplan > "plan-$env.txt"
+            echo '```text' >> terraform-plan-comment.md
+            cat "plan-$env.txt" >> terraform-plan-comment.md
+            echo '```' >> terraform-plan-comment.md
+            rm -f "envs/$env/tfplan"
+          done
+          printf "\nPlan produit avec Terraform ; aucun apply n'a été exécuté par ce workflow.\n" >> terraform-plan-comment.md
+      - name: Publish or update plan comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- novasphere-terraform-plan -->';
+            let body = fs.readFileSync('terraform-plan-comment.md', 'utf8');
+            const max = 60000;
+            if (body.length > max) body = body.slice(0, max) + '\n\n> Commentaire tronqué. Consulter les logs du workflow pour les plans complets.';
+            const issue_number = context.issue.number;
+            if (!issue_number) {
+              core.info('Pas de numéro de PR : le commentaire est ignoré pour workflow_dispatch.');
+              return;
+            }
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number, body
+              });
+            }
+  module-tests:
+    name: Tests de l'extension du module équipe
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.0
+          terraform_wrapper: false
+      - name: Récupérer le module versionné
+        run: git clone --depth 1 --branch v2.0.0 https://github.com/RaiZing955/terraform-aws-web-sg.git module-test
+      - name: Initialiser sans backend AWS
+        run: terraform -chdir=module-test init -backend=false -input=false
+      - name: Exécuter les tests terraform test
+        run: terraform -chdir=module-test test -no-color
+
+  security-scan:
+    name: Checkov Terraform scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Checkov
+        run: python -m pip install --upgrade checkov
+      - name: Retrieve the versioned team module
+        run: git clone --depth 1 --branch v2.0.0 https://github.com/RaiZing955/terraform-aws-web-sg.git module-security-group
+      - name: Run Checkov on both Terraform repositories
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "===== DEPOT PRINCIPAL NOVASPHERE ====="
+            checkov --directory . --framework terraform --output cli --soft-fail
+            echo "===== MODULE SECURITY GROUP DE L'EQUIPE ====="
+            checkov --directory module-security-group --framework terraform --output cli --soft-fail
+          } 2>&1 | tee checkov-report.txt
+      - name: Upload Checkov report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-report
+          path: checkov-report.txt
+          if-no-files-found: warn
+          retention-days: 30

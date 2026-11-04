@@ -1,0 +1,9 @@
+# Copier en terraform.tfvars ; ne jamais commiter terraform.tfvars.
+owner                     = "abc"
+aws_region                = "us-east-1"
+vpc_cidr                  = "10.20.0.0/16"
+instance_type             = "t3.micro"
+use_lab_instance_profile  = true
+lab_instance_profile_name = "LabInstanceProfile"
+app_secret_version        = 1
+# Ne pas ajouter app_secret ici : passer TF_VAR_app_secret par l'environnement.

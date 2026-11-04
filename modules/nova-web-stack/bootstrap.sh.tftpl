@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+apt-get update -y
+apt-get install -y nginx awscli
+install -d -m 0700 /run/novasphere
+aws --region ${aws_region} ssm get-parameter --name "${secret_parameter_name}" --with-decryption --query Parameter.Value --output text > /run/novasphere/app-secret
+chmod 0400 /run/novasphere/app-secret
+printf '<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>NovaSphere</title></head><body><h1>NovaSphere - %s</h1><p>Serveur : %s</p><p>Secret Parameter Store : %s</p><p>Déployé par Terraform.</p></body></html>\n' "${environment}" "$(hostname)" "$(test -s /run/novasphere/app-secret && echo lu-au-demarrage)" > /var/www/html/index.html
+systemctl enable --now nginx

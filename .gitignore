@@ -1,0 +1,27 @@
+# Terraform state, plans and downloaded providers
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tflock
+tfplan
+crash.log
+crash.*.log
+.terraform.tfstate.lock.info
+# Local variable files: only *.tfvars.example are versioned
+*.tfvars
+!*.tfvars.example
+# Secrets, credentials, private keys and local inventories
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/
+ansible/inventory*.ini
+**/inventory*.ini
+ansible/.vault_pass
+*.retry
+# Local security scan output / generated reports
+reports/
+checkov-report.*
