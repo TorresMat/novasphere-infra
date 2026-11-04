@@ -33,6 +33,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Inspect OIDC claims (safe fields only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl -fsS \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")"
+          token="$(jq -r '.value' <<< "$response")"
+          TOKEN="$token" python3 - <<'PYTOKEN'
+          import os, json, base64
+
+          token = os.environ["TOKEN"]
+          parts = token.split(".")
+          payload = parts[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+
+          fields = [
+              "iss", "aud", "sub", "repository",
+              "repository_id", "repository_owner",
+              "repository_owner_id", "ref",
+              "event_name", "environment"
+          ]
+
+          print(json.dumps(
+              {key: claims.get(key) for key in fields if key in claims},
+              indent=2
+          ))
+          PYTOKEN
+          unset token response
+
       - name: Configure AWS credentials with OIDC (personal account)
         if: ${{ vars.AWS_ROLE_ARN != '' }}
         uses: aws-actions/configure-aws-credentials@v4
