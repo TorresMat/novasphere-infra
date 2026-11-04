@@ -21,7 +21,6 @@ jobs:
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: development
     env:
       AWS_REGION: us-east-1
       TF_IN_AUTOMATION: "true"
