@@ -29,7 +29,7 @@ jobs:
       TF_VAR_owner: ${{ vars.TEAM_OWNER }}
       TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
       TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
-      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'false' }}
       TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +88,7 @@ jobs:
       TF_VAR_owner: ${{ vars.TEAM_OWNER }}
       TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
       TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
-      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'false' }}
       TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
     steps:
       - uses: actions/checkout@v4
@@ -148,7 +148,7 @@ jobs:
       TF_VAR_owner: ${{ vars.TEAM_OWNER }}
       TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
       TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
-      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'false' }}
       TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
     steps:
       - uses: actions/checkout@v4
@@ -209,7 +209,7 @@ jobs:
       TF_VAR_owner: ${{ vars.TEAM_OWNER }}
       TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
       TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
-      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'false' }}
       TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
     steps:
       - uses: actions/checkout@v4

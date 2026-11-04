@@ -23,7 +23,7 @@ jobs:
       TF_VAR_owner: ${{ vars.TEAM_OWNER }}
       TF_VAR_app_secret: ${{ secrets.APP_SECRET }}
       TF_VAR_app_secret_version: ${{ vars.APP_SECRET_VERSION || '1' }}
-      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'true' }}
+      TF_VAR_use_lab_instance_profile: ${{ vars.USE_LAB_INSTANCE_PROFILE || 'false' }}
       TF_VAR_lab_instance_profile_name: ${{ vars.LAB_INSTANCE_PROFILE_NAME || 'LabInstanceProfile' }}
     steps:
       - name: Checkout
@@ -117,7 +117,7 @@ jobs:
           terraform_version: 1.14.0
           terraform_wrapper: false
       - name: Récupérer le module versionné
-        run: git clone --depth 1 --branch v2.0.0 https://github.com/RaiZing955/terraform-aws-web-sg.git module-test
+        run: git clone --depth 1 --branch v2.0.2 https://github.com/RaiZing955/terraform-aws-web-sg.git module-test
       - name: Initialiser sans backend AWS
         run: terraform -chdir=module-test init -backend=false -input=false
       - name: Exécuter les tests terraform test
@@ -136,7 +136,7 @@ jobs:
       - name: Install Checkov
         run: python -m pip install --upgrade checkov
       - name: Retrieve the versioned team module
-        run: git clone --depth 1 --branch v2.0.0 https://github.com/RaiZing955/terraform-aws-web-sg.git module-security-group
+        run: git clone --depth 1 --branch v2.0.2 https://github.com/RaiZing955/terraform-aws-web-sg.git module-security-group
       - name: Run Checkov on both Terraform repositories
         shell: bash
         run: |
