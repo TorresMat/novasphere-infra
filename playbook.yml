@@ -1,0 +1,14 @@
+---
+- name: Configuration de mes 3 serveurs Proxmox
+  hosts: mes_serveurs
+  become: yes
+  tasks:
+    - name: Mise à jour du système
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Installation de Docker (par exemple)
+      apt:
+        name: docker.io
+        state: present
