@@ -47,3 +47,33 @@ Le workflow `terraform-pr.yml` exécute le scan sur le dépôt principal et sur 
 |---|---|---|---|---|
 | [À compléter] | [À compléter] | [PASS/FAIL/SKIP] | [À compléter] | [À compléter] |
 Les points d'architecture imposés (ALB public, subnets publics, absence de NAT) doivent être documentés s'ils déclenchent un contrôle ; ne pas masquer globalement des contrôles pour obtenir un résultat vert.
+
+## Bilan du scan Checkov — 04/11/2026
+
+### Résultats
+
+| Périmètre | Passed | Failed | Skipped |
+|---|---:|---:|---:|
+| Stack NovaSphere | 43 | 13 | 0 |
+| Module Security Group isolé | 13 | 1 | 0 |
+
+### Anomalies et décisions
+
+| Contrôle | Constat | Décision |
+|---|---|---|
+| CKV_TF_1 | Sources de modules référencées par versions/tag | Tags versionnés conservés conformément au cahier des charges. |
+| CKV_AWS_394 | Availability Zones découvertes dynamiquement | Comportement conservé pour la portabilité régionale ; à surveiller. |
+| CKV_AWS_337 | SecureString utilisant la clé KMS gérée par AWS | Accepté pour ce projet pédagogique ; CMK dédiée recommandée en production. |
+| CKV_AWS_150 | Protection contre suppression ALB désactivée | Choix lié aux destructions Terraform de l'environnement de test. |
+| CKV_AWS_91 | Journaux d'accès ALB désactivés | Fonctionnalité non activée dans le périmètre actuel ; à activer en production. |
+| CKV_AWS_2 / 103 / 378 / 2_20 | Listener et Target Group en HTTP, HTTPS absent | Limitation connue du prototype. Certificat TLS, listener HTTPS et redirection nécessaires avant exposition en production. |
+| CKV2_AWS_28 | WAF absent | Non déployé dans le périmètre actuel ; recommandé pour une exposition publique en production. |
+| CKV2_AWS_5 | Attachement des Security Groups non reconnu par le scan isolé | Vérifier les associations dans le contexte de déploiement ; ne pas considérer le contrôle comme corrigé sur la seule base du scan isolé. |
+
+### Conclusion
+
+Le scan identifie des améliorations de sécurité encore nécessaires.
+Les résultats ne signifient pas que l'ensemble des contrôles sont conformes.
+Les choix liés au périmètre pédagogique sont documentés et les protections
+HTTPS, WAF, journalisation et KMS dédiée restent des améliorations recommandées
+avant une exploitation réelle en production.
